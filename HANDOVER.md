@@ -93,9 +93,10 @@
 
 - 本体は `index.html` 1ファイル。`main` に push で GitHub Pages に自動デプロイ
 - レシピデータ(`BUILTIN`・36品)は姉妹アプリ kondate と同一内容をこのファイル内に複製して持っている(共有モジュールなし、単一HTMLの方針を維持するため)。レシピを追加・修正する場合、両アプリを同時に直すかどうかは判断が必要
-- 食材チェックリストは `BUILTIN` から `buildIndex()` が自動生成しているため、レシピの `ing` を追加すれば自動的にチェックリストにも反映される
+- **ユーザー拡張(2026-07-16追加)**: 自分の食材は `S.myIng`([{n,c}])、自分のレシピは `S.custom`(マイレシピタブで追加、id接頭辞 "c")。`allRecipes()`=BUILTIN+custom が検索対象
+- 食材チェックリストは `ingIndex()` が allRecipes+myIng から自動生成。レシピの `ing` を追加すれば自動的にチェックリストにも反映される
 - マッチングロジックは `rankedRecipes()`。`missing.length` 昇順 → `matched` 降順 → `time` 昇順でソート
-- localStorageキー: `nokori-v1`。同期機能はなし(全データ端末内)
+- localStorageキー: `nokori-v1`(スキーマは後方互換で myIng/custom を追加)。同期機能はなし(全データ端末内)
 - sw.js のキャッシュ名は `nokori-` プレフィックス(他アプリのキャッシュを消さないよう activate で自プレフィックスのみ削除)
 
 ## 注意事項

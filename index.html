@@ -104,12 +104,14 @@ nav.tabs button.on{color:var(--accent); font-weight:700;}
   <header class="top"><h1>のこりレシピ</h1><span class="sub" id="hSub"></span></header>
   <main>
     <section id="tab-search"></section>
+    <section id="tab-mine" hidden></section>
     <section id="tab-fav" hidden></section>
     <section id="tab-settings" hidden></section>
   </main>
 </div>
 <nav class="tabs"><div class="inner">
   <button data-tab="search" class="on"><span class="ic">🥬</span>さがす</button>
+  <button data-tab="mine"><span class="ic">📝</span>マイレシピ</button>
   <button data-tab="fav"><span class="ic">⭐</span>お気に入り</button>
   <button data-tab="settings"><span class="ic">⚙️</span>設定</button>
 </div></nav>
@@ -239,31 +241,45 @@ const SEAQ = {
 };
 function seaOf(r){ return SEAQ[r.id] || r.sea || []; }
 
-/* ============ 食材インデックス(BUILTINから自動生成) ============ */
-function buildIndex(){
+/* ============ 食材インデックス(内蔵+マイレシピ+自分で追加した食材から自動生成) ============ */
+function ingIndex(){
   const map = {};
   Object.values(CAT).forEach(c=>map[c]=new Map());
-  BUILTIN.forEach(r=>r.ing.forEach(i=>{
-    const m = map[i.c];
+  allRecipes().forEach(r=>r.ing.forEach(i=>{
+    const m = map[i.c] || map[CAT.SONOTA];
     m.set(i.n, (m.get(i.n)||0)+1);
   }));
+  (S.myIng||[]).forEach(mi=>{
+    const m = map[mi.c] || map[CAT.SONOTA];
+    if(!m.has(mi.n)) m.set(mi.n, 0);
+  });
   const out = {};
   Object.entries(map).forEach(([c,m])=>{
     out[c] = [...m.entries()].sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0],"ja")).map(([n])=>n);
   });
   return out;
 }
-const ING_INDEX = buildIndex();
+function catOfName(n){
+  for(const r of allRecipes()){ const hit=r.ing.find(i=>i.n===n); if(hit) return hit.c; }
+  const mi=(S.myIng||[]).find(x=>x.n===n); if(mi) return mi.c;
+  return CAT.SONOTA;
+}
 
 /* ============ 状態 ============ */
 const KEY = "nokori-v1";
 const $=s=>document.querySelector(s);
 function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function load(){
-  try{ const raw=localStorage.getItem(KEY); if(raw){ const s=JSON.parse(raw); if(s&&s.have) return s; } }catch(e){}
-  return { have:{}, fav:{}, timeLimit:0 };
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const s=JSON.parse(raw); if(s&&s.have){
+    if(!Array.isArray(s.myIng)) s.myIng=[];
+    if(!Array.isArray(s.custom)) s.custom=[];
+    return s;
+  } } }catch(e){}
+  return { have:{}, fav:{}, timeLimit:0, myIng:[], custom:[] };
 }
 let S = load();
+function allRecipes(){ return BUILTIN.concat(S.custom||[]); }
+function byId(id){ return allRecipes().find(r=>r.id===id); }
 let saveFailWarned=false;
 function save(){
   try{ localStorage.setItem(KEY, JSON.stringify(S)); }
@@ -286,7 +302,7 @@ function scoreRecipe(r, have){
 function rankedRecipes(){
   const have = haveSet();
   const tl = S.timeLimit||0;
-  let list = BUILTIN.filter(r=> !tl || r.time<=tl);
+  let list = allRecipes().filter(r=> !tl || r.time<=tl);
   let scored = list.map(r=>({r, ...scoreRecipe(r, have)}));
   if(have.size===0){
     scored.sort((a,b)=> a.r.time-b.r.time || a.r.name.localeCompare(b.r.name,"ja"));
@@ -311,13 +327,25 @@ function renderSearch(){
     ${have.size? `<div class="row"><span class="small grow">選んだ食材: ${have.size}個</span><button class="ghost" id="clearHave">クリア</button></div>` : ""}
   </div>`;
   html += `<div class="card">`;
-  Object.entries(ING_INDEX).forEach(([cat,names])=>{
+  Object.entries(ingIndex()).forEach(([cat,names])=>{
     if(!names.length) return;
     html += `<div class="grouphead">${esc(cat)}</div><div class="chips">` +
       names.map(n=>`<button data-ing="${esc(n)}" class="${S.have[n]?"on":""}">${esc(n)}</button>`).join("") +
       `</div>`;
   });
   html += `</div>`;
+  html += `<div class="card">
+    <div class="grouphead" style="margin-top:0">選択肢にない食材を追加</div>
+    <div class="row">
+      <input type="text" id="miName" placeholder="食材名(例: ちくわ)" class="grow" style="font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:120px">
+      <select id="miCat" style="font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px">
+        ${Object.values(CAT).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("")}
+      </select>
+      <button class="primary" id="miAdd">追加</button>
+    </div>
+    ${(S.myIng||[]).length? `<p class="small" style="margin:8px 0 4px">追加した食材(✕で削除):</p>
+    <div class="chips">${S.myIng.map(mi=>`<button class="ghost" data-delmi="${esc(mi.n)}">${esc(mi.n)} ✕</button>`).join("")}</div>`:""}
+  </div>`;
   html += `<div class="card">
     <div class="grouphead" style="margin-top:0">調理時間</div>
     <div class="seg" id="timeSeg">
@@ -341,7 +369,7 @@ function renderSearch(){
       html += `<div class="rrow">
         <button class="star ${fav?"on":""}" data-fav="${r.id}" aria-label="お気に入り">${fav?"★":"☆"}</button>
         <button class="nm" data-open="${r.id}">
-          <div class="t">${esc(r.name)} <span class="small">(${esc(r.main)} / ${r.time}分)</span></div>
+          <div class="t">${esc(r.name)} <span class="small">(${esc(r.main)} / ${r.time}分)</span>${r.id[0]==="c"?` <span class="chip">自作</span>`:""}</div>
           ${have.size>0 && missing.length>0 ? `<div class="s">あと: ${missing.map(i=>esc(i.n)).join("、")}</div>` : ""}
         </button>
         <span class="statuswrap">${status}</span>
@@ -354,6 +382,20 @@ function renderSearch(){
   el.querySelectorAll("[data-ing]").forEach(b=>b.onclick=()=>{
     const n=b.dataset.ing;
     if(S.have[n]) delete S.have[n]; else S.have[n]=true;
+    save(); renderSearch(); updateHead();
+  });
+  $("#miAdd").onclick=()=>{
+    const n=$("#miName").value.trim();
+    if(!n){ alert("食材名を入れてください。"); return; }
+    const exists = Object.values(ingIndex()).some(names=>names.includes(n));
+    if(!exists) S.myIng.push({n, c:$("#miCat").value});
+    S.have[n]=true;
+    save(); renderSearch(); updateHead();
+  };
+  el.querySelectorAll("[data-delmi]").forEach(b=>b.onclick=()=>{
+    const n=b.dataset.delmi;
+    S.myIng=S.myIng.filter(x=>x.n!==n);
+    delete S.have[n];
     save(); renderSearch(); updateHead();
   });
   el.querySelectorAll("#timeSeg button").forEach(b=>b.onclick=()=>{
@@ -369,7 +411,7 @@ function renderSearch(){
 
 /* ============ 詳細シート ============ */
 function openDetail(id){
-  const r=BUILTIN.find(x=>x.id===id); if(!r) return;
+  const r=byId(id); if(!r) return;
   const have=haveSet();
   const fav=!!S.fav[id];
   const missing=r.ing.filter(i=>!have.has(i.n));
@@ -382,8 +424,9 @@ function openDetail(id){
     </div>
     ${seaOf(r).length?`<div class="f-row"><div class="lbl">調味料(常備している前提)</div>
       <div class="toolchips">${seaOf(r).map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div></div>`:""}
-    <div class="f-row"><div class="lbl">作り方</div>
-      <ol class="steps">${stepsOf(r).map(s=>`<li>${esc(s)}</li>`).join("")}</ol></div>
+    ${stepsOf(r).length?`<div class="f-row"><div class="lbl">作り方</div>
+      <ol class="steps">${stepsOf(r).map(s=>`<li>${esc(s)}</li>`).join("")}</ol></div>`
+      :`<p class="small">作り方は登録されていません(マイレシピから編集できます)。</p>`}
     <div class="row" style="margin-top:10px">
       <button class="primary grow" id="dFav">${fav?"★ お気に入り解除":"☆ お気に入りに追加"}</button>
       ${missing.length?`<button class="ghost" id="dCopy">📋 足りない食材をコピー</button>`:""}
@@ -414,7 +457,7 @@ function renderFav(){
   }
   const have=haveSet();
   let html=`<div class="card">`;
-  ids.map(id=>BUILTIN.find(r=>r.id===id)).filter(Boolean).forEach(r=>{
+  ids.map(byId).filter(Boolean).forEach(r=>{
     const missing=r.ing.filter(i=>!have.has(i.n));
     const s = have.size===0
       ? `<div class="s">${r.ing.map(i=>esc(i.n)).join("、")}</div>`
@@ -435,13 +478,99 @@ function renderFav(){
   el.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>openDetail(b.dataset.open));
 }
 
+/* ============ マイレシピタブ ============ */
+const MAINS=["豚","鶏","ひき肉","牛","魚","麺","卵・豆腐","その他"];
+let editId=null;
+function parseIngLines(text){
+  return String(text||"").split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
+    const m=l.match(/^(\S+)\s*(.*)$/);
+    return {n:m[1], q:"", u:m[2]||"", c:catOfName(m[1]), d:99};
+  });
+}
+function parseStepLines(text){
+  return String(text||"").split(/\r?\n/).map(l=>l.trim().replace(/^\d+[.、)]\s*/,"")).filter(Boolean);
+}
+function renderMine(){
+  const el=$("#tab-mine");
+  const editing = editId ? S.custom.find(r=>r.id===editId) : null;
+  const ingText = editing ? editing.ing.map(i=>(i.n+(i.u?" "+i.u:""))).join("\n") : "";
+  const stText = editing ? (editing.st||[]).join("\n") : "";
+  let html=`<div class="card">
+    <div class="grouphead" style="margin-top:0">${editing?`「${esc(editing.name)}」を編集中`:"自分のレシピを追加"}</div>
+    <div class="f-row" style="margin-top:6px"><div class="lbl">料理名</div>
+      <input type="text" id="crName" value="${editing?esc(editing.name):""}" placeholder="例: うちの野菜スープ" style="width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px"></div>
+    <div class="row">
+      <label class="small">主材料
+        <select id="crMain" style="font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;display:block">
+          ${MAINS.map(m=>`<option value="${esc(m)}" ${editing&&editing.main===m?"selected":""}>${esc(m)}</option>`).join("")}
+        </select></label>
+      <label class="small">調理時間(分)
+        <input type="number" id="crTime" value="${editing?editing.time:15}" min="1" max="180" style="width:80px;display:block;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px"></label>
+    </div>
+    <div class="f-row"><div class="lbl">材料(1行に1つ「食材名 分量」)</div>
+      <textarea id="crIng" placeholder="例:&#10;ちくわ 2本&#10;キャベツ 1/4玉&#10;卵 2個">${esc(ingText)}</textarea>
+      <p class="small">ここに書いた食材は「さがす」タブのチェックリストにも自動で追加されます。</p></div>
+    <div class="f-row"><div class="lbl">作り方(1行に1手順・省略OK)</div>
+      <textarea id="crSt" placeholder="例:&#10;材料を切る&#10;炒めて調味する">${esc(stText)}</textarea></div>
+    <div class="row">
+      <button class="primary grow" id="crSave">${editing?"保存する":"＋ レシピを追加"}</button>
+      ${editing?`<button class="ghost" id="crCancel">キャンセル</button>`:""}
+    </div>
+  </div>`;
+  if(S.custom.length){
+    html+=`<h2>追加したレシピ(${S.custom.length}品)</h2><div class="card">`;
+    S.custom.forEach(r=>{
+      html+=`<div class="rrow">
+        <button class="nm" data-open="${r.id}">
+          <div class="t">${esc(r.name)} <span class="small">(${esc(r.main)} / ${r.time}分)</span></div>
+          <div class="s">${r.ing.map(i=>esc(i.n)).join("、")||"材料なし"}</div>
+        </button>
+        <button class="ghost" data-editr="${r.id}">✎ 編集</button>
+        <button class="ghost" data-delr="${r.id}" style="color:var(--warn)">削除</button>
+      </div>`;
+    });
+    html+=`</div>`;
+  } else {
+    html+=`<div class="card"><p class="small">まだ自分のレシピはありません。よく作る料理を登録すると、「さがす」タブの検索対象に加わります。</p></div>`;
+  }
+  el.innerHTML=html;
+  $("#crSave").onclick=()=>{
+    const name=$("#crName").value.trim();
+    if(!name){ alert("料理名を入れてください。"); return; }
+    const rec={
+      id: editing?editing.id:("c"+Date.now().toString(36)+Math.random().toString(36).slice(2,5)),
+      name,
+      main: $("#crMain").value,
+      time: Math.max(1, parseInt($("#crTime").value,10)||15),
+      ing: parseIngLines($("#crIng").value),
+      st: parseStepLines($("#crSt").value),
+      sea: []
+    };
+    if(editing){ S.custom=S.custom.map(r=>r.id===rec.id?rec:r); }
+    else S.custom.push(rec);
+    editId=null; save(); renderMine(); updateHead();
+  };
+  if(editing) $("#crCancel").onclick=()=>{ editId=null; renderMine(); };
+  el.querySelectorAll("[data-editr]").forEach(b=>b.onclick=()=>{ editId=b.dataset.editr; renderMine(); window.scrollTo({top:0,behavior:"smooth"}); });
+  el.querySelectorAll("[data-delr]").forEach(b=>b.onclick=()=>{
+    const r=S.custom.find(x=>x.id===b.dataset.delr);
+    if(!confirm(`「${r?r.name:""}」を削除しますか?`)) return;
+    S.custom=S.custom.filter(x=>x.id!==b.dataset.delr);
+    delete S.fav[b.dataset.delr];
+    if(editId===b.dataset.delr) editId=null;
+    save(); renderMine(); updateHead();
+  });
+  el.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>openDetail(b.dataset.open));
+}
+
 /* ============ 設定タブ ============ */
 function renderSettings(){
   const el=$("#tab-settings");
   el.innerHTML=`
   <div class="card">
     <h2 style="margin-top:0">このアプリについて</h2>
-    <p class="small">内蔵の36品のレシピから、チェックした食材で作れるものを自動で絞り込みます。分量は2人分の目安です。調味料は常備している前提で、材料には含めていません。</p>
+    <p class="small">内蔵の36品+マイレシピから、チェックした食材で作れるものを自動で絞り込みます。分量は2人分の目安です。調味料は常備している前提で、材料には含めていません。</p>
+    <p class="small" style="margin-top:6px">選択肢にない食材は「さがす」タブの下部から、自分のレシピは「マイレシピ」タブから追加できます。</p>
     <p class="small" style="margin-top:6px">選んだ食材・お気に入りはこの端末の中にだけ保存されます。外部への送信はありません。</p>
   </div>
   <div class="card">
@@ -460,6 +589,8 @@ function renderSettings(){
   $("#btnImport").onclick=()=>{
     try{
       const o=JSON.parse($("#ioArea").value); if(!o||!o.have) throw 0;
+      if(!Array.isArray(o.myIng)) o.myIng=[];
+      if(!Array.isArray(o.custom)) o.custom=[];
       S=o; save(); render(); alert("読み込みました");
     }catch(e){ alert("読み込めませんでした。書き出した文字列をそのまま貼ってください。"); }
   };
@@ -481,8 +612,9 @@ function updateHead(){
 }
 function render(){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
-  ["search","fav","settings"].forEach(t=>{ $("#tab-"+t).hidden=(t!==tab); });
+  ["search","mine","fav","settings"].forEach(t=>{ $("#tab-"+t).hidden=(t!==tab); });
   if(tab==="search") renderSearch();
+  if(tab==="mine") renderMine();
   if(tab==="fav") renderFav();
   if(tab==="settings") renderSettings();
   updateHead();
