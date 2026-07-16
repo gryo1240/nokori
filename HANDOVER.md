@@ -14,12 +14,12 @@
 | 項目 | 内容 |
 |---|---|
 | アプリ名 | のこりレシピ(冷蔵庫の残り物ごはん) |
-| 公開URL | https://gryo1240.github.io/nokori/ (※リポジトリ公開後に有効) |
+| 公開URL | https://gryo1240.github.io/nokori/ |
 | 種別 | 冷蔵庫にある食材から作れる料理を提案するWebアプリ(PWA・インストール可) |
 | 料金 / 登録 | 完全無料・アカウント登録不要・広告なし |
 | 対応端末 | スマホ(Android/iPhone)・PC のモダンブラウザ |
 | データの扱い | 選んだ食材・お気に入りは端末内のみ(localStorage)。外部送信なし・同期機能なし |
-| リポジトリ | https://github.com/gryo1240/nokori (予定) |
+| リポジトリ | https://github.com/gryo1240/nokori (public・公開済み) |
 
 ### アプリの特徴(記事の訴求ポイント)
 
